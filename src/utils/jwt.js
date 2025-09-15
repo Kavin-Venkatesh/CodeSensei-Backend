@@ -15,7 +15,7 @@ export const generateAccessToken = (user) =>{
         email : user.email
     },
     JWT_SECRET,
-    {expiresIn : process.env.JWT_EXPIRES_IN || '1h'});
+    {expiresIn : process.env.JWT_EXPIRES_IN || '1day'});
 };
 
 export const verifyToken = (token) =>{

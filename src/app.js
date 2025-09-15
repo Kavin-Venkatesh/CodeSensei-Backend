@@ -10,6 +10,7 @@ import './config/db.js';
 import authRouter from './routes/auth.js';
 import coursesRouter from './routes/courses.js';
 import topicsRouter from './routes/topics.js';
+import submissionRouter from './routes/submissions.js';
 
 const app = express();
 app.use(bodyParser.json());
@@ -28,6 +29,8 @@ app.use(cors(corsOptions));
 app.use('/api/auth' , authRouter);
 app.use('/api/courses', coursesRouter);
 app.use('/api/topics' , topicsRouter);
+app.use('/api/code' , submissionRouter);
+
 
 app.get('/api/health', (req, res) => {
     res.status(200).send('<======API is running======>');

@@ -6,6 +6,7 @@ const RAPIDAPI_HOST = process.env.XRapidApiHost;
 const RAPIDAPI_KEY = process.env.XRapidAPIKey;
 
 const getSubmissionsToken = async(code , language_id , stdin ) =>{
+   console.log("Entered submission generation");
     try{
         const submission =  await axios.post(`${JUDGE0_API}/submissions/?base64_encoded=false&wait=false`,{
             source_code : code,
@@ -20,6 +21,8 @@ const getSubmissionsToken = async(code , language_id , stdin ) =>{
         },
 
         })
+
+        console.log(submission);
 
         return submission.data.token;
     }
@@ -78,7 +81,9 @@ export const runCode = async(req , res ) =>{
             });
         }
 
+        console.log("Entered ")
         const submissionToken = await getSubmissionsToken(code , language_id , stdin);
+        console.log("submission token" , submissionToken);
 
         const result = await getSubmissionResult(submissionToken);
 

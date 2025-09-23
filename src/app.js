@@ -11,6 +11,7 @@ import authRouter from './routes/auth.js';
 import coursesRouter from './routes/courses.js';
 import topicsRouter from './routes/topics.js';
 import submissionRouter from './routes/submissions.js';
+import contentScheduler from './services/contentScheduler.js';
 
 const app = express();
 app.use(bodyParser.json());

@@ -5,25 +5,39 @@ export const getAllCourses = async (req, res) => {
     try {
         const query = `
             SELECT 
-                course_id,
-                course_title,
-                description,
-                language_id,
-                created_at
-            FROM courses
-            ORDER BY created_at DESC
+                c.course_id,
+                c.course_title,
+                c.description,
+                c.language_id,
+                c.created_at,
+                COUNT(t.topic_id) AS total_topics,
+            SUM(CASE WHEN t.is_completed = 1 THEN 1 ELSE 0 END) AS completed_topics
+            FROM courses c
+            LEFT JOIN topics t ON c.course_id = t.course_id
+            GROUP BY c.course_id, c.course_title, c.description, c.language_id, c.created_at
+            ORDER BY c.created_at DESC
+
         `;
 
         const [rows] = await pool.execute(query);
+
+        const coursesWithProgress = rows.map(course => {
+            const progress = course.total_topics > 0 ? (course.completed_topics / course.total_topics) * 100 : 0;
+            return {
+                ...course,
+                progress: Math.round(progress * 100) / 100 // Round to 2 decimal places
+            };
+        });
 
         res.status(200).json({
             success: true,
             message: 'Courses fetched successfully',
             data: {
-                courses: rows,
-                total: rows.length
+                courses: coursesWithProgress,
+                total: coursesWithProgress.length
             }
         });
+
 
     } catch (error) {
         console.error('Error fetching courses:', error);

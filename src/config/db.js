@@ -8,9 +8,14 @@ const dbConfig = {
     user: process.env.DB_USER || "root",
     password: process.env.DB_PASS || "",
     database: process.env.DB_NAME || "codesensei",
+    port: process.env.DB_PORT,  
     waitForConnections: true,
     connectionLimit: 10,
-    queueLimit: 0
+    queueLimit: 0,
+    ssl :{
+        ca: process.env.DB_CA,  // path to downloaded CA cert
+        rejectUnauthorized: true   
+    }
 };
 
 const pool = mysql.createPool(dbConfig);

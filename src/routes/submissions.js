@@ -1,7 +1,7 @@
 import express from 'express';
-
 import {
-    runCode
+    runCode,
+    runCodeAgainstTestCases
 } from "../controllers/codeSubmissionController.js";
 
 import { authenticateToken } from '../middleware/auth.js';
@@ -9,6 +9,11 @@ import { authenticateToken } from '../middleware/auth.js';
 const router =  express.Router();
 
 router.use(authenticateToken);
-router.post('/execute' , runCode);
+
+
+router.post('/executetestcases', runCodeAgainstTestCases);
+router.post('/execute', runCode);
+
+
 
 export default router;

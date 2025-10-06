@@ -49,10 +49,19 @@ import dotenv from "dotenv";
 dotenv.config();
 
 export const aiConfig = {
+  // openrouter: {
+  //   apiKey: process.env.OPENROUTER_API_KEY, // ✅ correct variable
+  //   baseUrl: "https://openrouter.ai/api/v1",
+  //   model: "x-ai/grok-4-fast:free",
+  // },
+
   openrouter: {
-    apiKey: process.env.OPENROUTER_API_KEY, // ✅ correct variable
-    baseUrl: "https://openrouter.ai/api/v1",
-    model: "x-ai/grok-4-fast:free",
+    apiKey: process.env.OPENROUTER_API_KEY, // ✅ your key from .env
+    baseUrl: "https://openrouter.ai/api/v1/chat/completions",
+    model: "anthropic/claude-sonnet-4.5", // New model
+    referer: "http://localhost:3000",        // Optional (used for ranking)
+    title: "CodeSensei",                     // Optional (used for ranking)
+
   },
 
   embedding: {

@@ -5,6 +5,7 @@ import { QuestionPrompt } from "../utils/prompts.js";
 import scraperService from "../services/scrapperServices.js";
 import aiContentService from "../services/aiContentServices.js";
 
+import { openRouterClient, aiConfig } from "../config/aiConfig.js";
 import { generateContentHash, normalizeContent } from "../utils/hash.js";
 import { generateEmbedding, cosineSimilarity } from "../utils/embeddings.js";
 
@@ -191,117 +192,135 @@ export const fetchLatestQuestion = async (req, res) => {
     }
 }
 
-
-
 export const generateQuestion = async (req, res) => {
+  const { topicId, topicTitle, difficultyLevel } = req.body;
 
-    const { topicId, topicTitle, difficultyLevel } = req.body;
+  if (!topicId || !topicTitle || !difficultyLevel) {
+    return res.status(400).json({
+      success: false,
+      message: "topicId, topicTitle and difficultyLevel are required",
+    });
+  }
 
-    // console.log("Generate question request body: ", topicId , topicTitle , difficultyLevel);
-    if (!topicId || !topicTitle || !difficultyLevel) {
-        return res.status(400).json({
-            success: false,
-            message: "topicId, topicTitle and difficultyLevel are required",
-        });
+  try {
+    // 🔹 Check question generation limit
+    const countQuery = `
+      SELECT COUNT(*) AS generation_count
+      FROM question_generations
+      WHERE topic_id = ?
+    `;
+    const [countRows] = await pool.execute(countQuery, [topicId]);
+    const generationCount = countRows[0].generation_count;
 
+    if (generationCount >= 3) {
+      return res.status(429).json({
+        success: false,
+        message: "Generation limit reached for this topic. Please try again later.",
+      });
     }
 
-    // console.log("Received generate question request: ", {topicId , topicTitle , difficultyLevel});
-    // console.log("API KEY " , process.env.GEMINI_API_KEY);
-
-    try {
-
-        //to block users from generating more than 3 questions in a day for a particular topic
-        const countQuery = `
-                SELECT COUNT(*) AS generation_count
-                FROM question_generations
-                WHERE topic_id = ?
-            `;
-
-        const [countRows] = await pool.execute(countQuery, [topicId]);
-        const generationCount = countRows[0].generation_count;
-        if (generationCount >= 3) {
-            return res.status(429).json({
-                success: false,
-                message: "Generation limit reached for this topic. Please try again later.",
-            });
-        }
-        const geminiResponse = await axios.post(
-            `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`, {
-            contents: [
-                {
-                    parts: [
-                        {
-                            text: QuestionPrompt(topicTitle, difficultyLevel)
-                        },
-                    ],
-                },
+    // 🔹 Call OpenRouter API
+    const fetchResponse = await fetch(aiConfig.openrouter.baseUrl, {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${aiConfig.openrouter.apiKey}`,
+        "HTTP-Referer": "http://localhost:3000", // update to production URL if needed
+        "X-Title": "CodeSensei",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: aiConfig.openrouter.model,
+        messages: [
+          {
+            role: "user",
+            content: [
+              {
+                type: "text",
+                text: QuestionPrompt(topicTitle, difficultyLevel),
+              },
             ],
-        }, {
-            headers: {
-                "Content-Type": "application/json",
-            }
-        }
-        );
+          },
+        ],
+        temperature: 0.7,
+        max_tokens: 1500,
+      }),
+    });
 
-        console.log("Full Gemini Response:", JSON.stringify(geminiResponse.data, null, 2));
+    const openRouterResponse = await fetchResponse.json();
 
-        // Check if the response has the expected structure
-        if (!geminiResponse.data || !geminiResponse.data.candidates || !geminiResponse.data.candidates[0]) {
-            throw new Error("Invalid response structure from Gemini API");
-        }
+    console.log("Full OpenRouter Response:", JSON.stringify(openRouterResponse, null, 2));
 
-        let textResponse = geminiResponse.data.candidates[0].content.parts[0].text;
-
-        // Clean the response by removing markdown code blocks
-        textResponse = textResponse.replace(/```json\n?/g, '').replace(/\n?```/g, '').trim();
-
-        console.log("Cleaned text response:", textResponse);
-
-        const questionData = JSON.parse(textResponse);
-
-        const insertQuery = `
-                INSERT INTO questions (topic_id, topic_title, difficulty_level, title, description, samples)
-                VALUES (?, ?, ? ,?, ?, ? ) ON DUPLICATE KEY 
-                UPDATE 
-                title  = VALUES(title),
-                description = VALUES(description),
-                samples = VALUES(samples),
-                updated_at = CURRENT_TIMESTAMP
-            `;
-
-        await pool.execute(insertQuery, [
-            topicId,
-            topicTitle,
-            difficultyLevel,
-            questionData.title,
-            questionData.description,
-            JSON.stringify(questionData.samples || [])
-        ]);
-
-
-        const logGenerationQuery = `
-                INSERT INTO question_generations (topic_id, difficulty_level)
-                VALUES (?, ?)
-            `;
-        await pool.execute(logGenerationQuery, [topicId, difficultyLevel]);
-        console.log("Logged Question Generation: ", { topicId, difficultyLevel });
-        return res.status(200).json({
-            success: true,
-            message: "Question generated successfully",
-            data: questionData,
-        });
-    } catch (error) {
-        console.error("Error generating question: ", error.response ? error.response.data : error.message);
-        return res.status(500).json({
-            success: false,
-            message: "Failed to generate question",
-            error: error.response ? error.response.data : error.message,
-        });
+    if (!openRouterResponse?.choices?.length) {
+      throw new Error("Invalid response structure from OpenRouter API");
     }
-}
 
+    // ✅ Correct content extraction for Claude/Anthropic models
+    let textResponse = openRouterResponse.choices[0].message.content || "";
 
+    // ✅ Clean markdown/code block formatting
+    textResponse = textResponse
+      .replace(/```json\s*/g, "")
+      .replace(/```/g, "")
+      .trim();
+
+    console.log("Cleaned text response:", textResponse);
+
+    // ✅ Validate before parsing
+    if (!textResponse || !textResponse.trim().startsWith("{")) {
+      throw new Error("Invalid JSON content returned by model:\n" + textResponse);
+    }
+
+    // ✅ Parse JSON safely
+    let questionData;
+    try {
+      questionData = JSON.parse(textResponse);
+    } catch (err) {
+      console.error("❌ JSON parse error. Model returned invalid JSON:", textResponse);
+      throw new Error("Failed to parse JSON from model output.");
+    }
+
+    // 🔹 Insert or update question record
+    const insertQuery = `
+      INSERT INTO questions (topic_id, topic_title, difficulty_level, title, description, samples)
+      VALUES (?, ?, ?, ?, ?, ?)
+      ON DUPLICATE KEY UPDATE
+        title = VALUES(title),
+        description = VALUES(description),
+        samples = VALUES(samples),
+        updated_at = CURRENT_TIMESTAMP
+    `;
+
+    await pool.execute(insertQuery, [
+      topicId,
+      topicTitle,
+      difficultyLevel,
+      questionData.title,
+      questionData.description,
+      JSON.stringify(questionData.samples || []),
+    ]);
+
+    // 🔹 Log the generation
+    const logGenerationQuery = `
+      INSERT INTO question_generations (topic_id, difficulty_level)
+      VALUES (?, ?)
+    `;
+    await pool.execute(logGenerationQuery, [topicId, difficultyLevel]);
+
+    // 🔹 Success response
+    return res.status(200).json({
+      success: true,
+      message: "Question generated successfully",
+      data: questionData,
+    });
+  } catch (error) {
+    console.error("Error generating question:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to generate question",
+      error: error.message || error,
+    });
+  }
+};
 export const getTopicAIContent = async (req, res) => {
     try {
         const { topicId } = req.params;

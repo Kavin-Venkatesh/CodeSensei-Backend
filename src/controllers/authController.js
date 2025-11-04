@@ -31,7 +31,7 @@ export const googleLogin = async (req ,res) => {
 
     await db.query("INSERT INTO refresh_tokens (user_id, token) VALUES (?, ?)", [user.id, refreshToken]);
 
-    res.json({ user, accessToken, refreshToken });
+    res.json({ user, accessToken  });
   } catch (err) {
     res.status(500).json({ message: "Google login failed", error: err.message });
   }

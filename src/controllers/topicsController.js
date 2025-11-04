@@ -1,22 +1,13 @@
 import axios from "axios";
 import pool from "../config/db.js";
 
-import { QuestionPrompt } from "../utils/prompts.js";
-import scraperService from "../services/scrapperServices.js";
 import aiContentService from "../services/aiContentServices.js";
-
-import { openRouterClient, aiConfig } from "../config/aiConfig.js";
-import { generateContentHash, normalizeContent } from "../utils/hash.js";
-import { generateEmbedding, cosineSimilarity } from "../utils/embeddings.js";
-
-
-// import { text } from "body-parser";
 
 export const getTopicsByID = async (req, res) => {
     try {
         const { courseId } = req.params;
+        const userId = req.user?.id || req.query.user_id;
 
-        // Validate courseId
         if (!courseId) {
             return res.status(400).json({
                 success: false,
@@ -24,56 +15,63 @@ export const getTopicsByID = async (req, res) => {
             });
         }
 
-        const query = `
-            SELECT
-                t.topic_id,
-                t.topic_title,
-                t.topic_description,
-                t.is_completed,
-                c.language_id
-            FROM topics t
-            INNER JOIN 
-                courses c
-            ON
-                t.course_id = c.course_id
-            WHERE
-                c.course_id = ?
-            ORDER BY
-                t.order_index ASC
-        `;
+        if (!userId) {
+            return res.status(400).json({
+                success: false,
+                message: "User ID is required to fetch progress",
+            });
+        }
 
-        const [rows] = await pool.execute(query, [courseId]);
+        const query = `
+      SELECT 
+        t.topic_id,
+        t.topic_title,
+        t.topic_description,
+        t.order_index,
+        c.language_id,
+        COALESCE(cp.is_completed, 0) AS is_completed,
+        cp.completed_at
+      FROM topics t
+      INNER JOIN courses c ON t.course_id = c.course_id
+      LEFT JOIN course_progress cp 
+        ON cp.topic_id = t.topic_id 
+       AND cp.user_id = ?
+      WHERE c.course_id = ?
+      ORDER BY t.order_index ASC
+    `;
+
+        const [rows] = await pool.execute(query, [userId, courseId]);
 
         if (rows.length === 0) {
             return res.status(404).json({
                 success: false,
-                message: "Topics not found",
+                message: "Topics not found for the given course",
             });
         }
 
         res.status(200).json({
             success: true,
-            message: "Topics Fetched successfully",
+            message: "Topics fetched successfully",
             data: {
                 topics: rows,
                 total: rows.length,
             },
         });
     } catch (err) {
-        console.error('Error fetching courses:', err);
+        console.error("Error fetching topics:", err);
         res.status(500).json({
             success: false,
-            message: 'Internal server error while fetching courses',
-            error: process.env.NODE_ENV === 'development' ? err.message : undefined,
+            message: "Internal server error while fetching topics",
+            error:
+                process.env.NODE_ENV === "development" ? err.message : undefined,
         });
     }
 };
 
-
 export const markAsCompleted = async (req, res) => {
-
     const { topicId } = req.params;
     const { is_completed } = req.body;
+    const userId = req.user?.id || req.body.user_id;
 
     try {
         if (!topicId) {
@@ -83,40 +81,41 @@ export const markAsCompleted = async (req, res) => {
             });
         }
 
-
-        const query = `
-            UPDATE topics
-            SET is_completed = ?
-            WHERE topic_id = ?
-        `;
-
-        const [rows] = await pool.execute(query, [is_completed ? 1 : 0, topicId]);
-
-        if (rows.affectedRows === 0) {
-            return res.status(404).json({
-                message: "Topic not found",
+        if (!userId) {
+            return res.status(400).json({
                 success: false,
+                message: "userId is required",
             });
         }
 
+        const query = `
+      INSERT INTO course_progress (user_id, topic_id, is_completed, completed_at)
+      VALUES (?, ?, ?, IF(? = 1, NOW(), NULL))
+      ON DUPLICATE KEY UPDATE 
+        is_completed = VALUES(is_completed),
+        completed_at = IF(VALUES(is_completed) = 1, NOW(), NULL)
+    `;
+
+        await pool.execute(query, [userId, topicId, is_completed ? 1 : 0, is_completed ? 1 : 0]);
+
         res.status(200).json({
             success: true,
-            message: `Topic ${is_completed === 1 ? "marked as completed" : "reset to incomplete"} successfully`,
+            message: `Topic ${is_completed ? "marked as completed" : "reset to incomplete"} successfully`,
         });
     } catch (error) {
-        console.error("Error marking topic as completed: ", error);
-
-        return res.status(500).json({
+        console.error("Error marking topic as completed:", error);
+        res.status(500).json({
             success: false,
             message: "Internal server error while marking topic as completed",
-            error: process.env.NODE_ENV === 'development' ? error.message : undefined,
+            error:
+                process.env.NODE_ENV === "development" ? error.message : undefined,
         });
     }
-
 };
-
-export const resetCourseProgress = async(req, res) => {
+export const resetCourseProgress = async (req, res) => {
     const { courseId } = req.params;
+    const userId = req.user?.id || req.body.user_id;
+    console.log("Resetting progress for courseId:", courseId, "userId:", userId);
     try {
         if (!courseId) {
             return res.status(400).json({
@@ -125,202 +124,39 @@ export const resetCourseProgress = async(req, res) => {
             });
         }
 
-        const query = `
-            UPDATE topics
-            SET is_completed = 0
-            WHERE course_id = ?
-        `;
-
-        const [rows] = await pool.execute(query, [courseId]);
-        res.status(200).json({
-            success: true,
-            message: `Course progress reset successfully`,
-            data: {
-                affectedRows: rows.affectedRows
-            }
-        });
-
-    } catch (error) {
-        console.error("Error resetting course progress: ", error);
-        return res.status(500).json({
-            success: false,
-            message: "Internal server error while resetting course progress",
-            error: process.env.NODE_ENV === 'development' ? error.message : undefined,
-        });
-    }
-};
-
-
-export const fetchLatestQuestion = async (req, res) => {
-    const { topic_id } = req.query;
-
-    if (!topic_id) {
-        return res.status(400).json({
-            success: false,
-            message: "topic_id is required",
-        });
-    }
-    try {
-        const query = `
-            SELECT * FROM questions
-            WHERE topic_id = ?
-            ORDER BY created_at DESC
-            LIMIT 1
-        `;
-
-        const [rows] = await pool.execute(query, [topic_id]);
-
-        if (rows.length === 0) {
-            return res.status(200).json({
+        if (!userId) {
+            return res.status(400).json({
                 success: false,
-                message: "No questions found for the given topic_id",
-                data: null,
+                message: "userId is required",
             });
         }
-        return res.status(200).json({
+
+        const query = `
+            DELETE cp
+            FROM course_progress cp
+            INNER JOIN topics t ON cp.topic_id = t.topic_id
+            WHERE t.course_id = ? AND cp.user_id = ?
+        `;
+
+        const [result] = await pool.execute(query, [courseId, userId]);
+
+        res.status(200).json({
             success: true,
-            message: "Latest question fetched successfully",
-            data: rows[0],
+            message: "Course progress reset successfully",
+            data: { affectedRows: result.affectedRows },
         });
     } catch (error) {
-        console.error("Error fetching latest question: ", error);
-        return res.status(500).json({
+        console.error("Error resetting course progress:", error);
+        res.status(500).json({
             success: false,
-            message: "Internal server error while fetching latest question",
-            error: process.env.NODE_ENV === 'development' ? error.message : undefined,
+            message: "Internal server error while resetting course progress",
+            error:
+                process.env.NODE_ENV === "development" ? error.message : undefined,
         });
     }
-}
-
-export const generateQuestion = async (req, res) => {
-  const { topicId, topicTitle, difficultyLevel } = req.body;
-
-  if (!topicId || !topicTitle || !difficultyLevel) {
-    return res.status(400).json({
-      success: false,
-      message: "topicId, topicTitle and difficultyLevel are required",
-    });
-  }
-
-  try {
-    // 🔹 Check question generation limit
-    const countQuery = `
-      SELECT COUNT(*) AS generation_count
-      FROM question_generations
-      WHERE topic_id = ?
-    `;
-    const [countRows] = await pool.execute(countQuery, [topicId]);
-    const generationCount = countRows[0].generation_count;
-
-    if (generationCount >= 3) {
-      return res.status(429).json({
-        success: false,
-        message: "Generation limit reached for this topic. Please try again later.",
-      });
-    }
-
-    // 🔹 Call OpenRouter API
-    const fetchResponse = await fetch(aiConfig.openrouter.baseUrl, {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${aiConfig.openrouter.apiKey}`,
-        "HTTP-Referer": "http://localhost:3000", // update to production URL if needed
-        "X-Title": "CodeSensei",
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: aiConfig.openrouter.model,
-        messages: [
-          {
-            role: "user",
-            content: [
-              {
-                type: "text",
-                text: QuestionPrompt(topicTitle, difficultyLevel),
-              },
-            ],
-          },
-        ],
-        temperature: 0.7,
-        max_tokens: 1500,
-      }),
-    });
-
-    const openRouterResponse = await fetchResponse.json();
-
-    console.log("Full OpenRouter Response:", JSON.stringify(openRouterResponse, null, 2));
-
-    if (!openRouterResponse?.choices?.length) {
-      throw new Error("Invalid response structure from OpenRouter API");
-    }
-
-    // ✅ Correct content extraction for Claude/Anthropic models
-    let textResponse = openRouterResponse.choices[0].message.content || "";
-
-    // ✅ Clean markdown/code block formatting
-    textResponse = textResponse
-      .replace(/```json\s*/g, "")
-      .replace(/```/g, "")
-      .trim();
-
-    console.log("Cleaned text response:", textResponse);
-
-    // ✅ Validate before parsing
-    if (!textResponse || !textResponse.trim().startsWith("{")) {
-      throw new Error("Invalid JSON content returned by model:\n" + textResponse);
-    }
-
-    // ✅ Parse JSON safely
-    let questionData;
-    try {
-      questionData = JSON.parse(textResponse);
-    } catch (err) {
-      console.error("❌ JSON parse error. Model returned invalid JSON:", textResponse);
-      throw new Error("Failed to parse JSON from model output.");
-    }
-
-    // 🔹 Insert or update question record
-    const insertQuery = `
-      INSERT INTO questions (topic_id, topic_title, difficulty_level, title, description, samples)
-      VALUES (?, ?, ?, ?, ?, ?)
-      ON DUPLICATE KEY UPDATE
-        title = VALUES(title),
-        description = VALUES(description),
-        samples = VALUES(samples),
-        updated_at = CURRENT_TIMESTAMP
-    `;
-
-    await pool.execute(insertQuery, [
-      topicId,
-      topicTitle,
-      difficultyLevel,
-      questionData.title,
-      questionData.description,
-      JSON.stringify(questionData.samples || []),
-    ]);
-
-    // 🔹 Log the generation
-    const logGenerationQuery = `
-      INSERT INTO question_generations (topic_id, difficulty_level)
-      VALUES (?, ?)
-    `;
-    await pool.execute(logGenerationQuery, [topicId, difficultyLevel]);
-
-    // 🔹 Success response
-    return res.status(200).json({
-      success: true,
-      message: "Question generated successfully",
-      data: questionData,
-    });
-  } catch (error) {
-    console.error("Error generating question:", error);
-    return res.status(500).json({
-      success: false,
-      message: "Failed to generate question",
-      error: error.message || error,
-    });
-  }
 };
+
+
 export const getTopicAIContent = async (req, res) => {
     try {
         const { topicId } = req.params;

@@ -11,6 +11,7 @@ import coursesRouter from './routes/courses.js';
 import topicsRouter from './routes/topics.js';
 import submissionRouter from './routes/submissions.js';
 import questionRouter  from './routes/practiceQuestion.js';
+import adminRouter from './routes/admin.js';
 
 const app = express();
 app.use(bodyParser.json());
@@ -31,6 +32,7 @@ app.use('/api/courses', coursesRouter);
 app.use('/api/topics' , topicsRouter);
 app.use('/api/code' , submissionRouter);
 app.use('/api/questions' , questionRouter);
+app.use('/api/admin' , adminRouter);
 
 app.get('/api/health', (req, res) => {
     res.status(200).send('<======API is running======>');

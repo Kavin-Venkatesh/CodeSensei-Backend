@@ -22,3 +22,28 @@ export const authenticateToken = (req, res, next) => {
         });
     }
 };
+
+
+export const adminOnly = (req, res, next) => {
+
+    const apiKey = req.headers['x-admin-key'];
+    const emailID = req.headers['x-admin-email'];
+
+    if (apiKey !== process.env.ADMIN_API_KEY ) {
+        return res.status(403).json({
+            success: false,
+            message: 'Invalid admin API key'
+        });
+    }
+
+
+    if( emailID !== process.env.ADMIN_EMAIL_ID ){
+        return res.status(403).json({
+            success: false,
+            message: 'Unauthorized email ID'
+        });
+    }
+
+    next();
+};
+

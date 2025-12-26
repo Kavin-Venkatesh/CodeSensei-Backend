@@ -1,6 +1,11 @@
 import express from 'express';
 
-import { storeQuestions , getQuestionsByUserID } from '../controllers/questionsController.js';
+import { 
+        storeQuestions ,
+        getQuestionsByUserID,
+        deleteQuestionByID ,
+        deleteAllQuestionsForUser
+    } from '../controllers/questionsController.js';
 import { authenticateToken } from '../middleware/auth.js';
 
 
@@ -9,4 +14,6 @@ router.use(authenticateToken);
 
 router.post('/store-questions' , storeQuestions);
 router.get('/fetch-questions/:id' , getQuestionsByUserID);
-export default router
+router.delete('/delete-question/:id' , deleteQuestionByID);
+router.delete('/delete-all-questions/:id' , deleteAllQuestionsForUser);
+export default router;

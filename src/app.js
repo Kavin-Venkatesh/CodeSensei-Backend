@@ -10,7 +10,7 @@ import authRouter from './routes/auth.js';
 import coursesRouter from './routes/courses.js';
 import topicsRouter from './routes/topics.js';
 import submissionRouter from './routes/submissions.js';
-import questionCreationRouter  from './routes/practiceQuestion.js';
+import questionRouter  from './routes/practiceQuestion.js';
 
 const app = express();
 app.use(bodyParser.json());
@@ -30,7 +30,7 @@ app.use('/api/auth' , authRouter);
 app.use('/api/courses', coursesRouter);
 app.use('/api/topics' , topicsRouter);
 app.use('/api/code' , submissionRouter);
-app.use('/api/questions' , questionCreationRouter);
+app.use('/api/questions' , questionRouter);
 
 app.get('/api/health', (req, res) => {
     res.status(200).send('<======API is running======>');

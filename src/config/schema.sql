@@ -23,7 +23,7 @@ CREATE TABLE IF NOT EXISTS practice_questions (
 
 CREATE TABLE IF NOT EXISTS test_cases (
     test_id        INT AUTO_INCREMENT PRIMARY KEY,
-    question_id    INT NOT NULL,           -- FK → questions.id
+    question_id    INT NOT NULL,          -- FK → questions.id 
     input          TEXT NOT NULL,
     expected_output TEXT NOT NULL,
     created_at     TIMESTAMP DEFAULT CURRENT_TIMESTAMP,

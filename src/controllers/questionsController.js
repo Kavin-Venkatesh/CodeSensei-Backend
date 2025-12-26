@@ -168,3 +168,86 @@ export const getQuestionsByUserID  = async(req , res) => {
         })
     }
 }
+
+
+export const deleteQuestionByID =  async(req , res) =>{
+    try{
+        const questionID = req.params.id;
+       
+        if( !questionID){
+            return res.status(404).json({
+                success : false,
+                message : "Invalid question id or questionID not found"
+            })
+        }
+        const deleteQuery = `
+            DELETE FROM practice_questions
+            WHERE question_id = ?
+        `;
+
+        const [result] = await pool.execute(deleteQuery , [questionID]);
+
+        if( result.affectedRows === 0){
+            return res.status(404).json({
+                success : false,
+                message : "Question not found or already deleted"
+            })
+        }
+
+        res.status(200).json({
+            success : true,
+            message : "Question deleted successfully"
+        })
+    }catch( err){
+        console.log("error while deleting question" , err);
+        res.status(500).json({
+            success : false,
+            message : 'Internal server error while deleting question',
+            error: process.env.NODE_ENV === 'development' ? error.message : undefined
+        })
+    }
+}
+
+
+export const deleteAllQuestionsForUser = async(req , res) => {
+
+    console.log("deleteAllQuestionsForUser called");
+    try{
+        const userID = req.params.id;
+
+        console.log("userID" , userID);
+        if( !userID){
+            return res.status(404).json({
+                success : false,
+                message : "Invalid user id or userID not found"
+            })
+        }
+
+        const deleteQuery = `
+            DELETE FROM practice_questions
+            WHERE created_by = ?
+        `;
+
+        const [result] = await pool.execute(deleteQuery , [userID]);
+
+        if( result.affectedRows === 0){
+            return res.status(404).json({
+                success : false,
+                message : "No Questions found for the user or already deleted"
+            })
+        }
+
+        res.status(200).json({
+            success : true,
+            message : "All Questions deleted successfully for the user"
+        })
+    }
+    catch( err){
+        console.log("error while deleting all questions for user" , err);
+        res.status(500).json({
+            success : false,
+            message : 'Internal server error while deleting all questions for user',
+            error: process.env.NODE_ENV === 'development' ? error.message : undefined
+        })
+    }
+}

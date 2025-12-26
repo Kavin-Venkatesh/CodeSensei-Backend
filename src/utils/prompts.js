@@ -10,11 +10,9 @@ export const ExplanationPrompt = (officialContent, topicTitle, courseTitle) => {
     Topic: ${topicTitle}
 
     Official Documentation Content:
-    ${officialContent}
 
     Your task:
     1. Start with a **clear beginner-level explanation** in simple English (assume the learner has zero prior knowledge).
-    2. Use **Indian real-life analogies** (chai, cricket, trains, shops, markets, etc.) to make abstract concepts relatable, but keep analogies short and supportive, not overwhelming.
     3. After analogies, provide a **step-by-step technical breakdown** that goes deeper into the concept.
     4. Add **small practical examples and short code snippets** with explanations line by line.
     5. Include **common beginner mistakes** and clarify how to avoid them.

@@ -70,7 +70,6 @@ export const runCode = async (req, res) => {
   try {
     const { code, language_id, topic_id, stdin, userToken } = req.body;
 
-
     if (!code || !language_id || !userToken) {
       return res.status(400).json({
         success: false,
@@ -79,7 +78,9 @@ export const runCode = async (req, res) => {
     }
 
     const submissionToken = await getSubmissionsToken(code, language_id, stdin);
+
     const result = await getSubmissionResult(submissionToken);
+
 
     return res.status(200).json({
       success: true,

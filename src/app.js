@@ -21,7 +21,7 @@ app.use(express.urlencoded({ extended: true }));
 
 
 const corsOptions = {
-    origin: ['http://localhost:5173', 'http://localhost:5174'], 
+    origin: ['http://localhost:5173','https://code-sensei-frontend.vercel.app'], 
     credentials: true,          
 };
 
